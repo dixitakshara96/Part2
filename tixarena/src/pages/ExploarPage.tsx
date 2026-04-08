@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useApp, MOCK_EVENTS, Category } from "../Context/AppContex";
+import { useApp, MOCK_EVENTS, type Category } from "../Context/AppContex";
 import { BottomNav } from "./HomePage";
 
 const CATEGORIES: { key: Category; label: string; icon: string }[] = [

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { MOCK_EVENTS, Category } from "../Context/AppContex";
+import { MOCK_EVENTS, useApp, type Category } from "../Context/AppContex";
 import { BottomNav } from "./HomePage";
 
 // ─── Search Page ─────────────────────────────────────────────────────────────

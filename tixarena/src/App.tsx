@@ -3,12 +3,14 @@ import { AppProvider, useApp } from "./Context/AppContex";
 
 // Pages
 import HomePage from "./pages/HomePage";
-import ExplorePage from "./pages/ExplorePage";
-import EventDetailPage from "./pages/EventDetailPage";
-import CheckoutPage from "./pages/CheckoutPage";
-import { BookingConfirmPage, MyTicketsPage } from "./pages/TicketsPage";
+
+
 import { SearchPage, NotificationsPage, ProfilePage } from "./pages/OtherPages";
 import CreateEventPage from "./pages/CreateEventPage";
+import ExplorePage from "./pages/ExploarPage";
+import EventDetailPage from "./pages/Eventdetail";
+import CheckoutPage from "./pages/CheckOutPage";
+import { BookingConfirmPage, MyTicketsPage } from "./pages/TicketPage";
 
 function Router() {
   const { currentPage } = useApp();

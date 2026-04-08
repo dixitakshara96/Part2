@@ -1,3 +1,4 @@
+import { MOCK_EVENTS, useApp, type Category } from "../Context/AppContex";
 
 
 const categoryIcons: Record<string, string> = {
