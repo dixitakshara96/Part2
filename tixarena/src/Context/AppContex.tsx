@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { authApi, getToken, clearToken, type UserProfile } from "./api";
 
 export type Category = "all" | "college-fest" | "popup" | "community" | "music" | "food" | "tech" | "sports";
 
@@ -19,7 +20,6 @@ export interface Event {
   capacity: number;
   description: string;
   isFeatured?: boolean;
-  isSaved?: boolean;
 }
 
 export interface Ticket {
@@ -34,17 +34,9 @@ export interface Ticket {
   ticketNumber: string;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatar: string;
-  location: string;
-  interests: Category[];
-  college?: string;
-}
-
 export type Page =
+  | "login"
+  | "signup"
   | "home"
   | "explore"
   | "event-detail"
@@ -56,20 +48,6 @@ export type Page =
   | "create-event"
   | "booking-confirm";
 
-interface AppState {
-  currentPage: Page;
-  selectedEventId: string | null;
-  user: User;
-  tickets: Ticket[];
-  savedEvents: string[];
-  cartEventId: string | null;
-  cartQuantity: number;
-  searchQuery: string;
-  activeCategory: Category;
-  notifications: Notification[];
-  isLoggedIn: boolean;
-}
-
 interface Notification {
   id: string;
   type: "reminder" | "booking" | "promo" | "update";
@@ -79,226 +57,84 @@ interface Notification {
   read: boolean;
 }
 
+interface AppState {
+  currentPage: Page;
+  selectedEventId: string | null;
+  user: UserProfile | null;
+  isLoggedIn: boolean;
+  authLoading: boolean;
+  tickets: Ticket[];
+  savedEvents: string[];
+  cartEventId: string | null;
+  cartQuantity: number;
+  activeCategory: Category;
+  notifications: Notification[];
+}
+
 interface AppContextType extends AppState {
   navigate: (page: Page, eventId?: string) => void;
+  loginUser: (user: UserProfile) => void;
+  logout: () => void;
   toggleSaveEvent: (eventId: string) => void;
   addToCart: (eventId: string, quantity: number) => void;
-  confirmBooking: () => void;
-  setSearchQuery: (q: string) => void;
+  confirmBooking: (ticket: Ticket) => void;
   setActiveCategory: (c: Category) => void;
   markNotificationRead: (id: string) => void;
   cancelTicket: (ticketId: string) => void;
 }
 
-const MOCK_EVENTS: Event[] = [
-  {
-    id: "1",
-    title: "Techfest 2025 — IIT Lucknow",
-    category: "college-fest",
-    date: "2025-04-15",
-    time: "10:00 AM",
-    venue: "IIT Lucknow Campus",
-    location: "Gomti Nagar, Lucknow",
-    distance: "2.3 km",
-    price: 299,
-    image: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80",
-    tags: ["Tech", "Robotics", "AI", "Hackathon"],
-    organizer: "IIT Lucknow",
-    attendees: 1240,
-    capacity: 2000,
-    description: "Annual technology festival featuring robotics competitions, AI workshops, startup pitches, and keynotes from industry leaders. A 3-day celebration of innovation and technology.",
-    isFeatured: true,
-  },
-  {
-    id: "2",
-    title: "Sunday Bazaar Pop-Up",
-    category: "popup",
-    date: "2025-04-13",
-    time: "11:00 AM",
-    venue: "Hazratganj Central Park",
-    location: "Hazratganj, Lucknow",
-    distance: "1.1 km",
-    price: 50,
-    image: "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=800&q=80",
-    tags: ["Shopping", "Handmade", "Food", "Art"],
-    organizer: "LKO Makers Collective",
-    attendees: 320,
-    capacity: 500,
-    description: "A vibrant pop-up market featuring 60+ local artisans, handmade crafts, street food, live music performances, and everything local Lucknow has to offer.",
-    isFeatured: true,
-  },
-  {
-    id: "3",
-    title: "Indie Nights — Live Music",
-    category: "music",
-    date: "2025-04-18",
-    time: "7:00 PM",
-    venue: "Oudh 1590 Rooftop",
-    location: "Vipin Khand, Lucknow",
-    distance: "3.7 km",
-    price: 499,
-    image: "https://images.unsplash.com/photo-1501386761578-eaa54b41f1eb?w=800&q=80",
-    tags: ["Music", "Indie", "Live", "Rooftop"],
-    organizer: "Rhythm House Events",
-    attendees: 180,
-    capacity: 250,
-    description: "An intimate rooftop evening featuring 4 indie artists performing original music. Includes complimentary welcome drink and artisan snacks.",
-    isFeatured: false,
-  },
-  {
-    id: "4",
-    title: "Flavours of Awadh Food Fest",
-    category: "food",
-    date: "2025-04-20",
-    time: "12:00 PM",
-    venue: "Janeshwar Mishra Park",
-    location: "Gomti Nagar, Lucknow",
-    distance: "4.2 km",
-    price: 149,
-    image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80",
-    tags: ["Food", "Awadhi", "Street Food", "Biryani"],
-    organizer: "Lucknow Food Society",
-    attendees: 860,
-    capacity: 1500,
-    description: "A 2-day celebration of Lucknow's legendary Awadhi cuisine. 40+ food stalls, live cooking demos by master chefs, and a grand biryani cook-off.",
-    isFeatured: true,
-  },
-  {
-    id: "5",
-    title: "Campus Startup Summit",
-    category: "tech",
-    date: "2025-04-25",
-    time: "9:00 AM",
-    venue: "BBAU Auditorium",
-    location: "Lucknow University Road",
-    distance: "5.8 km",
-    price: 0,
-    image: "https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=800&q=80",
-    tags: ["Startup", "Pitch", "Networking", "Free"],
-    organizer: "BBAU E-Cell",
-    attendees: 420,
-    capacity: 600,
-    description: "A free startup summit connecting student entrepreneurs with mentors, VCs, and industry experts. Pitch competitions with prize pool of ₹2 Lakhs.",
-    isFeatured: false,
-  },
-  {
-    id: "6",
-    title: "Yoga & Wellness Morning",
-    category: "community",
-    date: "2025-04-14",
-    time: "6:00 AM",
-    venue: "Ambedkar Park",
-    location: "Sector 6, Lucknow",
-    distance: "0.8 km",
-    price: 100,
-    image: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&q=80",
-    tags: ["Wellness", "Yoga", "Morning", "Health"],
-    organizer: "Lucknow Wellness Hub",
-    attendees: 95,
-    capacity: 150,
-    description: "Start your Sunday right with a guided 2-hour yoga and mindfulness session followed by a healthy breakfast social with the local wellness community.",
-    isFeatured: false,
-  },
-  {
-    id: "7",
-    title: "Inter-College Basketball Slam",
-    category: "sports",
-    date: "2025-04-22",
-    time: "2:00 PM",
-    venue: "KD Singh Babu Stadium",
-    location: "Lalbagh, Lucknow",
-    distance: "2.9 km",
-    price: 80,
-    image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80",
-    tags: ["Basketball", "Sports", "College", "Competition"],
-    organizer: "Lucknow Sports Federation",
-    attendees: 540,
-    capacity: 1200,
-    description: "12 college teams compete in the ultimate inter-college basketball tournament. Slam dunks, three-pointers, and championship glory await.",
-    isFeatured: false,
-  },
-  {
-    id: "8",
-    title: "Photography Walk — Old City",
-    category: "community",
-    date: "2025-04-19",
-    time: "7:00 AM",
-    venue: "Rumi Darwaza",
-    location: "Chowk, Lucknow",
-    distance: "3.4 km",
-    price: 199,
-    image: "https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=800&q=80",
-    tags: ["Photography", "Heritage", "Walk", "Art"],
-    organizer: "Lucknow Lens Club",
-    attendees: 45,
-    capacity: 60,
-    description: "A guided 3-hour photography walk through Old Lucknow's heritage lanes, nawabi architecture, and morning chai spots. Suitable for all skill levels.",
-    isFeatured: false,
-  },
-];
-
-const MOCK_TICKETS: Ticket[] = [
-  {
-    id: "T001",
-    eventId: "1",
-    event: MOCK_EVENTS[0],
-    quantity: 2,
-    totalPrice: 598,
-    bookingDate: "2025-04-08",
-    status: "upcoming",
-    qrCode: "QR_T001_TECHFEST",
-    ticketNumber: "LKO-2025-001234",
-  },
-  {
-    id: "T002",
-    eventId: "2",
-    event: MOCK_EVENTS[1],
-    quantity: 1,
-    totalPrice: 50,
-    bookingDate: "2025-04-07",
-    status: "upcoming",
-    qrCode: "QR_T002_BAZAAR",
-    ticketNumber: "LKO-2025-001235",
-  },
-];
-
 const MOCK_NOTIFICATIONS: Notification[] = [
-  { id: "n1", type: "reminder", title: "Techfest starts tomorrow!", body: "Your tickets for IIT Lucknow Techfest are ready. Gates open at 9 AM.", time: "1h ago", read: false },
+  { id: "n1", type: "reminder", title: "Techfest starts tomorrow!", body: "Your tickets are ready. Gates open at 9 AM.", time: "1h ago", read: false },
   { id: "n2", type: "promo", title: "New event near you", body: "Photography Walk — Old City just listed, only 15 spots left.", time: "3h ago", read: false },
   { id: "n3", type: "booking", title: "Booking confirmed", body: "Sunday Bazaar Pop-Up — 1 ticket successfully booked.", time: "1d ago", read: true },
-  { id: "n4", type: "update", title: "Venue update", body: "Indie Nights venue has been moved to Oudh 1590 Rooftop.", time: "2d ago", read: true },
 ];
-
-const MOCK_USER: User = {
-  id: "u1",
-  name: "Arjun Sharma",
-  email: "arjun.sharma@gmail.com",
-  avatar: "AS",
-  location: "Gomti Nagar, Lucknow",
-  interests: ["tech", "music", "community"],
-  college: "IET Lucknow",
-};
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>({
-    currentPage: "home",
+    currentPage: "login",
     selectedEventId: null,
-    user: MOCK_USER,
-    tickets: MOCK_TICKETS,
-    savedEvents: ["3", "5"],
+    user: null,
+    isLoggedIn: false,
+    authLoading: true,
+    tickets: [],
+    savedEvents: [],
     cartEventId: null,
     cartQuantity: 1,
-    searchQuery: "",
     activeCategory: "all",
     notifications: MOCK_NOTIFICATIONS,
-    isLoggedIn: true,
   });
+
+  // Auto-login if token exists
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setState((s) => ({ ...s, authLoading: false, currentPage: "login" }));
+      return;
+    }
+    authApi.me()
+      .then((res) => {
+        setState((s) => ({ ...s, user: res.user, isLoggedIn: true, authLoading: false, currentPage: "home" }));
+      })
+      .catch(() => {
+        clearToken();
+        setState((s) => ({ ...s, authLoading: false, currentPage: "login" }));
+      });
+  }, []);
 
   const navigate = useCallback((page: Page, eventId?: string) => {
     setState((s) => ({ ...s, currentPage: page, selectedEventId: eventId ?? s.selectedEventId }));
     window.scrollTo(0, 0);
+  }, []);
+
+  const loginUser = useCallback((user: UserProfile) => {
+    setState((s) => ({ ...s, user, isLoggedIn: true }));
+  }, []);
+
+  const logout = useCallback(() => {
+    clearToken();
+    setState((s) => ({ ...s, user: null, isLoggedIn: false, currentPage: "login", tickets: [], savedEvents: [] }));
   }, []);
 
   const toggleSaveEvent = useCallback((eventId: string) => {
@@ -314,55 +150,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState((s) => ({ ...s, cartEventId: eventId, cartQuantity: quantity }));
   }, []);
 
-  const confirmBooking = useCallback(() => {
-    setState((s) => {
-      if (!s.cartEventId) return s;
-      const event = MOCK_EVENTS.find((e) => e.id === s.cartEventId);
-      if (!event) return s;
-      const newTicket: Ticket = {
-        id: `T${Date.now()}`,
-        eventId: s.cartEventId,
-        event,
-        quantity: s.cartQuantity,
-        totalPrice: event.price * s.cartQuantity,
-        bookingDate: new Date().toISOString().split("T")[0],
-        status: "upcoming",
-        qrCode: `QR_${Date.now()}`,
-        ticketNumber: `LKO-2025-${Math.floor(Math.random() * 900000 + 100000)}`,
-      };
-      return {
-        ...s,
-        tickets: [newTicket, ...s.tickets],
-        cartEventId: null,
-        currentPage: "booking-confirm",
-      };
-    });
+  const confirmBooking = useCallback((ticket: Ticket) => {
+    setState((s) => ({ ...s, tickets: [ticket, ...s.tickets], cartEventId: null, currentPage: "booking-confirm" }));
   }, []);
 
-  const setSearchQuery = useCallback((q: string) => {
-    setState((s) => ({ ...s, searchQuery: q }));
-  }, []);
-
-  const setActiveCategory = useCallback((c: Category) => {
-    setState((s) => ({ ...s, activeCategory: c }));
-  }, []);
+  const setActiveCategory = useCallback((c: Category) => setState((s) => ({ ...s, activeCategory: c })), []);
 
   const markNotificationRead = useCallback((id: string) => {
-    setState((s) => ({
-      ...s,
-      notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    }));
+    setState((s) => ({ ...s, notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) }));
   }, []);
 
   const cancelTicket = useCallback((ticketId: string) => {
-    setState((s) => ({
-      ...s,
-      tickets: s.tickets.map((t) => (t.id === ticketId ? { ...t, status: "cancelled" as const } : t)),
-    }));
+    setState((s) => ({ ...s, tickets: s.tickets.map((t) => (t.id === ticketId ? { ...t, status: "cancelled" as const } : t)) }));
   }, []);
 
+  if (state.authLoading) {
+    return (
+      <div className="min-h-screen bg-stone-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-400 flex items-center justify-center">
+            <span className="text-stone-950 font-black text-lg">LK</span>
+          </div>
+          <svg className="w-5 h-5 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <AppContext.Provider value={{ ...state, navigate, toggleSaveEvent, addToCart, confirmBooking, setSearchQuery, setActiveCategory, markNotificationRead, cancelTicket }}>
+    <AppContext.Provider value={{ ...state, navigate, loginUser, logout, toggleSaveEvent, addToCart, confirmBooking, setActiveCategory, markNotificationRead, cancelTicket }}>
       {children}
     </AppContext.Provider>
   );
@@ -374,4 +193,13 @@ export const useApp = () => {
   return ctx;
 };
 
-export { MOCK_EVENTS };
+export const MOCK_EVENTS: Event[] = [
+  { id: "evt-001", title: "Techfest 2025 — IIT Lucknow", category: "college-fest", date: "2025-04-15", time: "10:00 AM", venue: "IIT Lucknow Campus", location: "Gomti Nagar, Lucknow", distance: "2.3 km", price: 299, image: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80", tags: ["Tech", "Robotics", "AI", "Hackathon"], organizer: "IIT Lucknow", attendees: 1240, capacity: 2000, isFeatured: true, description: "Annual technology festival featuring robotics competitions, AI workshops, and startup pitches." },
+  { id: "evt-002", title: "Sunday Bazaar Pop-Up", category: "popup", date: "2025-04-13", time: "11:00 AM", venue: "Hazratganj Central Park", location: "Hazratganj, Lucknow", distance: "1.1 km", price: 50, image: "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=800&q=80", tags: ["Shopping", "Handmade", "Food", "Art"], organizer: "LKO Makers Collective", attendees: 320, capacity: 500, isFeatured: true, description: "A vibrant pop-up market with 60+ local artisans, handmade crafts, and street food." },
+  { id: "evt-003", title: "Indie Nights — Live Music", category: "music", date: "2025-04-18", time: "7:00 PM", venue: "Oudh 1590 Rooftop", location: "Vipin Khand, Lucknow", distance: "3.7 km", price: 499, image: "https://images.unsplash.com/photo-1501386761578-eaa54b41f1eb?w=800&q=80", tags: ["Music", "Indie", "Live", "Rooftop"], organizer: "Rhythm House Events", attendees: 180, capacity: 250, isFeatured: false, description: "Intimate rooftop evening with 4 indie artists performing original music." },
+  { id: "evt-004", title: "Flavours of Awadh Food Fest", category: "food", date: "2025-04-20", time: "12:00 PM", venue: "Janeshwar Mishra Park", location: "Gomti Nagar, Lucknow", distance: "4.2 km", price: 149, image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80", tags: ["Food", "Awadhi", "Street Food", "Biryani"], organizer: "Lucknow Food Society", attendees: 860, capacity: 1500, isFeatured: true, description: "2-day Awadhi cuisine festival with 40+ food stalls and live cooking demos." },
+  { id: "evt-005", title: "Campus Startup Summit", category: "tech", date: "2025-04-25", time: "9:00 AM", venue: "BBAU Auditorium", location: "Lucknow University Road", distance: "5.8 km", price: 0, image: "https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=800&q=80", tags: ["Startup", "Pitch", "Networking", "Free"], organizer: "BBAU E-Cell", attendees: 420, capacity: 600, isFeatured: false, description: "Free startup summit connecting student entrepreneurs with mentors and VCs." },
+  { id: "evt-006", title: "Yoga & Wellness Morning", category: "community", date: "2025-04-14", time: "6:00 AM", venue: "Ambedkar Park", location: "Sector 6, Lucknow", distance: "0.8 km", price: 100, image: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&q=80", tags: ["Wellness", "Yoga", "Morning", "Health"], organizer: "Lucknow Wellness Hub", attendees: 95, capacity: 150, isFeatured: false, description: "Guided 2-hour yoga and mindfulness session with a healthy breakfast social." },
+  { id: "evt-007", title: "Inter-College Basketball Slam", category: "sports", date: "2025-04-22", time: "2:00 PM", venue: "KD Singh Babu Stadium", location: "Lalbagh, Lucknow", distance: "2.9 km", price: 80, image: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80", tags: ["Basketball", "Sports", "College", "Competition"], organizer: "Lucknow Sports Federation", attendees: 540, capacity: 1200, isFeatured: false, description: "12 college teams in the ultimate inter-college basketball tournament." },
+  { id: "evt-008", title: "Photography Walk — Old City", category: "community", date: "2025-04-19", time: "7:00 AM", venue: "Rumi Darwaza", location: "Chowk, Lucknow", distance: "3.4 km", price: 199, image: "https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=800&q=80", tags: ["Photography", "Heritage", "Walk", "Art"], organizer: "Lucknow Lens Club", attendees: 45, capacity: 60, isFeatured: false, description: "Guided 3-hour photography walk through Old Lucknow's heritage lanes." },
+];

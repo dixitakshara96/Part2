@@ -11,21 +11,30 @@ import ExplorePage from "./pages/ExploarPage";
 import EventDetailPage from "./pages/Eventdetail";
 import CheckoutPage from "./pages/CheckOutPage";
 import { BookingConfirmPage, MyTicketsPage } from "./pages/TicketPage";
+import { LoginPage, SignupPage } from "./pages/AuthScreen";
 
 function Router() {
-  const { currentPage } = useApp();
+  const { currentPage, isLoggedIn } = useApp();
+
+  // Auth guard: redirect unauthenticated users to login
+  const publicPages = ["login", "signup"];
+  if (!isLoggedIn && !publicPages.includes(currentPage)) {
+    return <LoginPage />;
+  }
 
   const pages: Record<string, React.ReactNode> = {
-    home: <HomePage />,
-    explore: <ExplorePage />,
-    "event-detail": <EventDetailPage />,
-    checkout: <CheckoutPage />,
-    "booking-confirm": <BookingConfirmPage />,
-    "my-tickets": <MyTicketsPage />,
-    search: <SearchPage />,
-    notifications: <NotificationsPage />,
-    profile: <ProfilePage />,
-    "create-event": <CreateEventPage />,
+    login:            <LoginPage />,
+    signup:           <SignupPage />,
+    home:             <HomePage />,
+    explore:          <ExplorePage />,
+    "event-detail":   <EventDetailPage />,
+    checkout:         <CheckoutPage />,
+    "booking-confirm":<BookingConfirmPage />,
+    "my-tickets":     <MyTicketsPage />,
+    search:           <SearchPage />,
+    notifications:    <NotificationsPage />,
+    profile:          <ProfilePage />,
+    "create-event":   <CreateEventPage />,
   };
 
   return <>{pages[currentPage] ?? <HomePage />}</>;
